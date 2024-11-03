@@ -1,0 +1,230 @@
+---
+title: "ZAD 2 - tidyverse"
+author: "Jakub Ciura"
+format: 
+  html:
+    theme: minty            
+    toc: true                 
+    toc-depth: 2              
+    code-fold: true           
+    code-tools: true          
+    number-sections: true     
+    font:                     
+      text: "Lato"            
+      code: "Fira Code"       
+      heading: "Roboto"       
+    page-layout: full        
+editor_options: 
+  chunk_output_type: console
+abstract: |
+  Przyjrzymy się danym mydata z pakietu openair(Carslaw and Ropkins 2012). Na podstawie tego zbioru danych spróbujemy zbudować model klasyfikacji. Będzie on przewidywał, czy stężenia ozonu było wysokie, czy było niskie. Zanim zdefiniujemy co oznacza “wysokie” i “niskie” przyjrzymy się zestawowi naszych danych.
+execute:
+  echo: true                 
+  warning: false             
+  message: false             
+---
+
+## Realizację zadania rozpoczynamy od załadowania potrzebnych bibliotek oraz baz danych.
+```{r}
+#| echo: true
+#| results: "hide"
+#| message: false
+#| style:
+
+
+library(tidymodels) 
+library(skimr) 
+library(GGally) 
+library(openair) 
+tidymodels_prefer()
+```
+
+
+## Wczytujemy dane, dla konkretnego roku.
+```{r}
+air <- mydata |> selectByDate(year = 2004) 
+air |> skim()
+```
+
+
+## Usuwamy brakujące dane.
+```{r}
+air <- air |> na.omit()
+```
+
+
+## Przyglądamy się współczynnikom korelacji, w celu odnalezienia cech ważnych w predykcji stężeń ozonu.
+Według aktualnego stanu wiedzy istotne są parametry meteorologiczne, grupy czasu oraz tlenki azotu (przemiany chemiczne).
+```{r}
+set.seed(222)
+air[sample(1:nrow(air), size = 300, replace = F),] |> 
+  select(nox, no2) |> 
+  ggpairs()
+
+```
+
+## Tworzymy wykres regresji liniowej, w celu sprawdzenia powyższych hipotez.
+
+```{r}
+library(ggpubr)
+
+set.seed(222)
+air[sample(1:nrow(air), size = 300, replace = F),] |> 
+  select(nox, no2) |> 
+  ggplot(aes(nox, no2)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = T, formula = y ~ x) + 
+  stat_cor(label.x = 10, label.y = 80) + 
+  stat_regline_equation(label.x = 10, label.y = 82) +
+  theme_bw()
+```
+Jak widać na powyższym wykresie: nox i no2 są ze sobą mocno skorelowane.
+
+
+## Obserwujemy stężenie ozonu
+
+```{r}
+
+air |>    
+  ggplot(aes(date, o3)) +     
+  geom_line() +     
+  theme_bw()
+
+```
+Przyjmijmy założenie, że wysokie stężenia ozonu, to O3>10μgm3O3​>10m3μg​, a niskie to O3<10μgm3O3​<10m3μg​. Skorzystamy z podstawowej funkcji cut do przekształcenia zmiennej ilościowej na jakościową.
+
+```{r}
+air |> 
+  pull(o3) |> 
+  range()  
+```
+
+```{r}
+air <-
+  air |>
+  mutate(ozone = cut(
+    o3,
+    breaks = c(-0.1, 10, 53),
+    labels = c("Niskie", "Wysokie")
+  ))
+```
+
+
+Następnie sprawdzamy:
+```{r}
+air |> count(ozone)
+```
+
+
+## Tworzenie modelu regresji logistycznej.
+
+Zadanie rozpoczynamy od podziału zbiorów na zbiór treningowy i testowy.
+
+```{r}
+
+set.seed(222)
+split <- initial_split(air, strata = ozone, prop = 0.7)  # 70% na trening, 30% na test
+train_data <- training(split)
+test_data <- testing(split)
+
+
+```
+
+Następnie budujemy model regresji logistycznej.
+```{r}
+
+log_model <- logistic_reg() |> 
+  set_engine("glm") |> 
+  set_mode("classification")
+
+log_recipe <- recipe(ozone ~ nox + no2, data = train_data) |> 
+  step_normalize(all_predictors())  # Normalizacja zmiennych niezależnych
+
+log_workflow <- workflow() |> 
+  add_model(log_model) |> 
+  add_recipe(log_recipe)
+
+```
+
+Trenujemy model na zbiorze treningowym
+```{r}
+
+log_fit <- log_workflow |> 
+  fit(data = train_data)
+
+```
+
+Finalnie, oceniamy model na zbiorze testowym, aby sprawdzić jego skuteczność w przewidywaniu poziomu ozonu.
+```{r}
+
+test_predictions <- predict(log_fit, test_data) |> 
+  bind_cols(test_data)
+
+metrics <- test_predictions |> 
+  yardstick::metrics(truth = ozone, estimate = .pred_class)
+
+metrics
+
+```
+
+Jak możemy zauważyć, zgodność modelu jest względnie wysoka - 82%.
+
+
+
+## Czy zmienne *date, wd, pm10, pm25, so2, co* wnoszą coś do modelu ?
+Z uwagi na to, ze zmienna ozone jest kategoryczna, przekształcamy ją na wartości binarne.
+```{r}
+
+air <- air |>
+  mutate(ozone = cut(o3, breaks = c(-0.1, 10, 53), labels = c("Niskie", "Wysokie")))
+air <- air |> mutate(ozone_binary = ifelse(ozone == "Wysokie", 1, 0))
+
+```
+
+Sam kierunek wiatru w takiej formie nie wnosi zbyt wiele w analizę (postać kątowa). Można spróbować przekształcić go jednak do postaci składowych wektorów - ma to większe prawdopodobieństwo do reprezentacji wpływu wiatru na stężenie ozonu.
+
+```{r}
+air <- air |>
+  mutate(
+    wd_cos = cos(wd * pi / 180),
+    wd_sin = sin(wd * pi / 180)
+  )
+
+```
+
+Wybieramy zmienne do analizy korelacji, po czym obliczamy macierz korelacji. Następnie wyświetlamy korelacje ozonu z innymi zmiennymi w porządku malejącym.
+
+```{r}
+
+cor_data <- air |> 
+  select(ozone_binary, nox, no2, ws, wd_cos, wd_sin, pm10, pm25, so2, co)
+
+cor_matrix <- cor(cor_data)
+cor_with_ozone <- cor_matrix["ozone_binary", ]
+cor_with_ozone[order(abs(cor_with_ozone), decreasing = TRUE)]
+```
+
+Obserwując powyższe wyniki, zauważamy które zmienne warto rozważyć przy tworzeniu modelu.
+Są to oprócz potwierdzonych wcześniej *nox* i *no2*: *co*, *wd_cos*, *pm10* oraz *pm25*.
+Pozostałe zmienne, których współćzynnik korelacji z ozonem wynosi <0.3, uznaje za nisko skorelowane z ozonem.
+
+
+
+## Zastanów się jakie role przypisać *no2* i *nox*, ponieważ te dwa predyktory są z sobą mocno skorelowane.
+
+Zmienne no2 i nox są ze sobą mocno skorelowane, co może prowadzić do problemu współliniowości w modelu, co z kolei może negatywnie wpłynąć na jego interpretację oraz skuteczność. Współliniowość oznacza, że dwie lub więcej zmiennych wyjaśniają podobną część wariancji, co może utrudniać wyraźne określenie ich indywidualnych wpływów na zmienną zależną.
+
+Z uwagi na wysoką korelację między no2 i nox, koniecznym jest aby rozważyć, czy włączyć tylko jedną z nich do modelu, utworzyć nową zmienną łączącą obie, lub zastosować zaawansowane techniki, takie jak PCA lub regularyzacja. 
+
+
+## Czy stosować przekształcenia boxCox lub YeoJohnson - dla jakich zmiennych?
+Przekształcenia boxCox oraz YeoJohnson są to przekształcenia, które umożliwiają uzyskanie rozkładu normalnego. Mogą być użyteczne, gdy naszym zadaniem jest  poprawa liniowości i zmniejszenie heteroskedastyczności (zmienności reszt) w modelu regresji.
+
+Kluczową różnicą pomiędzy powyższymi przekształceniami jest rodzaj danych - w przypadku boxCox muszą to być zmienne dodatnie, zaś dla YeoJohnson mogą to być dane, które zawierają wartości zerowe i ujemne. Czyni je to bardziej odpowiednim dla szerszego zakresu danych.
+
+Analizując nasz zbiór danych, przekształcenie boxCox byłoby wystarczające i pomogłoby wzmocnić zależność liniową.
+
+
+## Czy normalizacja zmiennych numerycznych jest potrzebna ?
+Tak, przygotowując model regresji liniowej pomocnym może być normalizacja danych.
+W ten sposób zmniejszamy wpływ zmiennych o dużych wartościach na wyniki modelu, co może poprawić jego stabilność i dokładność.
