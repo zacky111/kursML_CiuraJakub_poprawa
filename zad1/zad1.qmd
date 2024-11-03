@@ -1,14 +1,35 @@
 ---
-title: "ZAD 1 - tidyverse"
-author: "Ciura Jakub"
-format: html
+title: "ZAD 1 - Prognoza O3 z użyciem tidyverse"
+author: "Jakub Ciura"
+format: 
+  html:
+    theme: minty            
+    toc: true                 
+    toc-depth: 2              
+    code-fold: true           
+    code-tools: true          
+    number-sections: true     
+    font:                     
+      text: "Lato"            
+      code: "Fira Code"       
+      heading: "Roboto"       
+    page-layout: full        
 editor_options: 
   chunk_output_type: console
+abstract: |
+  Modelowanie poziomu ozonu (O3) na podstawie danych `airquality`. W ramach projektu dane zostały przygotowane i przetworzone przy użyciu pakietu `tidyverse`, a następnie zbudowano model regresji liniowej na podstawie przekształconych zmiennych.
+execute:
+  echo: true                 
+  warning: false             
+  message: false             
 ---
 
-yaml - proszę poprawić. 
 
-MRZ: Pan chyba stworzył wiele gałęzi, wiele zadań, ale głównym repo jest niewiele bo nie ma `pull requests`. Patrzę na pana repo i widę wiele `branch` otwrtych a nie scalonych. WYmga silnje ingerencji.  
+
+
+<!-- yaml - proszę poprawić. 
+MRZ: Pan chyba stworzył wiele gałęzi, wiele zadań, ale głównym repo jest niewiele bo nie ma `pull requests`. Patrzę na pana repo i widę wiele `branch` otwrtych a nie scalonych. WYmga silnje ingerencji. 
+--> 
 
 ## Treść
 
@@ -101,8 +122,19 @@ predictions <- predict(model, newdata = air_scaled)
 head(predictions)
 ```
 
-Przeprowadź ocenę modelu z:
+## Przeprowadzamy ocenę modelu.
+Do realizacji tego zadania używamy narzędzi dostępnych w pakiecie yardstick.
+
+
 
 ```{r}
 library(yardstick)
+# Tworzymy ramkę danych z rzeczywistymi i przewidywanymi wartościami
+results <- air_scaled %>%
+  mutate(predicted_ozone = predictions)
+
+metrics <- results %>%
+  yardstick::metrics(truth = ozone, estimate = predicted_ozone)
+
+metrics
 ```
