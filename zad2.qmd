@@ -223,3 +223,8 @@ Przekształcenia boxCox oraz YeoJohnson są to przekształcenia, które umożliw
 Kluczową różnicą pomiędzy powyższymi przekształceniami jest rodzaj danych - w przypadku boxCox muszą to być zmienne dodatnie, zaś dla YeoJohnson mogą to być dane, które zawierają wartości zerowe i ujemne. Czyni je to bardziej odpowiednim dla szerszego zakresu danych.
 
 Analizując nasz zbiór danych, przekształcenie boxCox byłoby wystarczające i pomogłoby wzmocnić zależność liniową.
+
+
+## Czy normalizacja zmiennych numerycznych jest potrzebna ?
+Tak, przygotowując model regresji liniowej pomocnym może być normalizacja danych.
+W ten sposób zmniejszamy wpływ zmiennych o dużych wartościach na wyniki modelu, co może poprawić jego stabilność i dokładność.
