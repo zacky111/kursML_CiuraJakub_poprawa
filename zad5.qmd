@@ -1,0 +1,26 @@
+---
+title: "ZAD 5 - tidyverse - optymalizacja hiper-parametrów modelu lasu losowego"
+author: "Jakub Ciura"
+format: 
+  html:
+    theme: minty            
+    toc: true                 
+    toc-depth: 2              
+    code-fold: true           
+    code-tools: true          
+    number-sections: true     
+    font:                     
+      text: "Lato"            
+      code: "Fira Code"       
+      heading: "Roboto"       
+    page-layout: full        
+editor_options: 
+  chunk_output_type: console
+abstract: |
+  Zoptymalizuj hiper-parametry w modelu lasu losowego utworzonego w ćwiczeniu nr 3. Dostosuj ilość współczynników w siatce hiper-parametrów.
+execute:
+  echo: true                 
+  warning: false             
+  message: false
+cache: true          
+---
