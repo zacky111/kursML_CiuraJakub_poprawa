@@ -24,3 +24,66 @@ execute:
   message: false
 cache: true          
 ---
+
+
+## Przygotowanie danych
+Zadanie rozpoczynamy od przygotowania danych. Jest to procedura zgodna z zadaniem nr 2 - szczegółowe opisy każdej części dostępne w pliku "ZAD 2 - tidyverse".
+
+
+
+```{r}
+#| results: "hide"
+#| warning: false
+#| message: false
+
+library(tidymodels) 
+library(skimr) 
+library(GGally) 
+library(openair) 
+tidymodels_prefer()
+
+air <- mydata |> selectByDate(year = 2004) 
+air |> skim()
+
+air <- air |> na.omit()
+
+library(ggpubr)
+
+air |> 
+  pull(o3) |> 
+  range()  
+
+air <-
+  air |>
+  mutate(ozone = cut(
+    o3,
+    breaks = c(-0.1, 10, 53),
+    labels = c("Niskie", "Wysokie")
+  ))
+
+air |> count(ozone)
+
+split <- initial_split(air, strata = ozone, prop = 0.7)  # 70% na trening, 30% na test
+train_data <- training(split)
+test_data <- testing(split)
+
+```
+
+## Stworzenie modelu lasu losowego
+
+```{r}
+
+# Definiowanie modelu lasu losowego
+rf_model <- rand_forest() |> 
+  set_engine("randomForest") |> 
+  set_mode("classification")
+
+# Przygotowanie przepisu dla modelu lasu losowego
+rf_recipe <- recipe(ozone ~ nox + no2, data = train_data) |> 
+  step_normalize(all_predictors())  # Normalizacja zmiennych niezależnych
+
+```
+
+
+
+
