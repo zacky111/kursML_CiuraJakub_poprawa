@@ -8,7 +8,8 @@ format:
     toc-depth: 2              
     code-fold: true           
     code-tools: true          
-    number-sections: true     
+    number-sections: true
+    self-contained: true      
     font:                     
       text: "Lato"            
       code: "Fira Code"       
@@ -26,7 +27,7 @@ cache: true
 ---
 
 
-## Przygotowanie danych
+# Przygotowanie danych
 Zadanie rozpoczynamy od przygotowania danych. Jest to procedura zgodna z zadaniem nr 2 - szczegółowe opisy każdej części dostępne w pliku "ZAD 2 - tidyverse".
 
 
@@ -69,7 +70,7 @@ test_data <- testing(split)
 
 ```
 
-## Stworzenie modelu lasu losowego
+# Stworzenie modelu lasu losowego
 
 ```{r}
 
@@ -85,5 +86,80 @@ rf_recipe <- recipe(ozone ~ nox + no2, data = train_data) |>
 ```
 
 
+```{r}
+library(tidymodels)
+
+# Ustawienie siatki hiperparametrów
+rf_grid <- grid_regular(
+  mtry(range = c(1, 2)),       # Zakres dla mtry (np. 1-2)
+  min_n(range = c(2, 10)),     # Zakres dla min_n (np. 2-10)
+  levels = 20                   # Poziomy dla siatki (im więcej, tym bardziej szczegółowe)
+)
+
+# Walidacja krzyżowa
+cv_folds <- vfold_cv(train_data, v = 5, strata = ozone)
+
+# Workflow
+rf_workflow <- workflow() |> 
+  add_model(rf_model) |> 
+  add_recipe(rf_recipe)
+
+# Przeszukiwanie siatki hiperparametrów
+rf_tune_results <- rf_workflow |> 
+  tune_grid(
+    resamples = cv_folds,
+    grid = rf_grid,
+    metrics = metric_set(roc_auc)
+  )
+
+# Znalezienie najlepszych hiperparametrów
+best_params <- rf_tune_results |> select_best(metric = "roc_auc")
+
+best_params
 
 
+```
+
+# Wytrenowanie modelu z optymalnymi hiperparametrami
+
+```{r}
+# Dopasowanie modelu do optymalnych hiperparametrów
+final_rf_model <- finalize_model(rf_model, best_params)
+
+# Tworzenie workflow z najlepszym modelem
+final_rf_workflow <- workflow() |> 
+  add_model(final_rf_model) |> 
+  add_recipe(rf_recipe)
+
+# Dopasowanie ostatecznego modelu do danych treningowych
+final_rf_fit <- final_rf_workflow |> 
+  fit(data = train_data)
+
+```
+
+# Wizualizacja wyników
+```{r}
+# Wyświetlenie najlepszych wyników
+show_best(rf_tune_results, metric = "roc_auc", n = 5)
+```
+
+
+```{r}
+library(ggplot2)
+
+# Wyciągnij najlepsze wyniki dla każdej kombinacji hiperparametrów
+results <- collect_metrics(rf_tune_results)
+
+# Stwórz wykres dla metryki roc_auc w zależności od mtry i min_n
+ggplot(results, aes(x = mtry, y = mean, color = factor(min_n))) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Optymalizacja hiperparametrów modelu lasu losowego",
+    x = "Liczba wybranych predyktorów (mtry)",
+    y = "Średnia wartość ROC AUC",
+    color = "Minimalna liczba próbek w liściu (min_n)"
+  ) +
+  theme_minimal()
+
+```
