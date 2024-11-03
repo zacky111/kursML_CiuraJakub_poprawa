@@ -207,3 +207,19 @@ cor_with_ozone[order(abs(cor_with_ozone), decreasing = TRUE)]
 Obserwując powyższe wyniki, zauważamy które zmienne warto rozważyć przy tworzeniu modelu.
 Są to oprócz potwierdzonych wcześniej *nox* i *no2*: *co*, *wd_cos*, *pm10* oraz *pm25*.
 Pozostałe zmienne, których współćzynnik korelacji z ozonem wynosi <0.3, uznaje za nisko skorelowane z ozonem.
+
+
+
+## Zastanów się jakie role przypisać *no2* i *nox*, ponieważ te dwa predyktory są z sobą mocno skorelowane.
+
+Zmienne no2 i nox są ze sobą mocno skorelowane, co może prowadzić do problemu współliniowości w modelu, co z kolei może negatywnie wpłynąć na jego interpretację oraz skuteczność. Współliniowość oznacza, że dwie lub więcej zmiennych wyjaśniają podobną część wariancji, co może utrudniać wyraźne określenie ich indywidualnych wpływów na zmienną zależną.
+
+Z uwagi na wysoką korelację między no2 i nox, koniecznym jest aby rozważyć, czy włączyć tylko jedną z nich do modelu, utworzyć nową zmienną łączącą obie, lub zastosować zaawansowane techniki, takie jak PCA lub regularyzacja. 
+
+
+## Czy stosować przekształcenia boxCox lub YeoJohnson - dla jakich zmiennych?
+Przekształcenia boxCox oraz YeoJohnson są to przekształcenia, które umożliwiają uzyskanie rozkładu normalnego. Mogą być użyteczne, gdy naszym zadaniem jest  poprawa liniowości i zmniejszenie heteroskedastyczności (zmienności reszt) w modelu regresji.
+
+Kluczową różnicą pomiędzy powyższymi przekształceniami jest rodzaj danych - w przypadku boxCox muszą to być zmienne dodatnie, zaś dla YeoJohnson mogą to być dane, które zawierają wartości zerowe i ujemne. Czyni je to bardziej odpowiednim dla szerszego zakresu danych.
+
+Analizując nasz zbiór danych, przekształcenie boxCox byłoby wystarczające i pomogłoby wzmocnić zależność liniową.
