@@ -1,27 +1,102 @@
 ---
-title: "zad3"
+title: "ZAD 3 - tidyverse - resampling"
 author: "Jakub Ciura"
-format: html
-editor: visual
+format: 
+  html:
+    theme: minty            
+    toc: true                 
+    toc-depth: 2              
+    code-fold: true           
+    code-tools: true          
+    number-sections: true     
+    font:                     
+      text: "Lato"            
+      code: "Fira Code"       
+      heading: "Roboto"       
+    page-layout: full        
+editor_options: 
+  chunk_output_type: console
+abstract: |
+  Zastosuj metody reamplingu (CV, V-krotną CV i bootstrap) do ćwiczenia nr 2. Wykonaj te czynności dla modelu regresji logistycznej oraz lasu losowego. Sprawdź wyniki i napisz kilka krótkich wniosków.
+execute:
+  echo: true                 
+  warning: false             
+  message: false             
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+## Przygotowanie danych
+Rozpoczęcie zadania rozpoczynamy od przygotowania danych. zgodnego z zadaniem nr 2 - szczegółowe opisy procedur dostępne w pliku "ZAD 2 - tidyverse".
 
 ```{r}
-1 + 1
+#| echo: true
+#| results: "hide"
+#| message: false
+#| style:
+
+
+library(tidymodels) 
+library(skimr) 
+library(GGally) 
+library(openair) 
+tidymodels_prefer()
+
+air <- mydata |> selectByDate(year = 2004) 
+air |> skim()
+
+air <- air |> na.omit()
+
+set.seed(222)
+air[sample(1:nrow(air), size = 300, replace = F),] |> 
+  select(nox, no2) |> 
+  ggpairs()
+
+
+library(ggpubr)
+
+set.seed(222)
+air[sample(1:nrow(air), size = 300, replace = F),] |> 
+  select(nox, no2) |> 
+  ggplot(aes(nox, no2)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = T, formula = y ~ x) + 
+  stat_cor(label.x = 10, label.y = 80) + 
+  stat_regline_equation(label.x = 10, label.y = 82) +
+  theme_bw()
+
+air |>    
+  ggplot(aes(date, o3)) +     
+  geom_line() +     
+  theme_bw()
+
+air |> 
+  pull(o3) |> 
+  range()  
+
+air <-
+  air |>
+  mutate(ozone = cut(
+    o3,
+    breaks = c(-0.1, 10, 53),
+    labels = c("Niskie", "Wysokie")
+  ))
+
+air |> count(ozone)
+
 ```
 
-You can add options to executable code like this
+## Stworzenie modeli regresji logistycznej i lasu losowego.
 
 ```{r}
-#| echo: false
-2 * 2
-```
+library(randomForest)
 
-The `echo: false` option disables the printing of code (only output is displayed).
+# Definiowanie modelu regresji logistycznej
+log_model <- logistic_reg() |> 
+  set_engine("glm") |> 
+  set_mode("classification")
+
+# Definiowanie modelu lasu losowego
+rf_model <- rand_forest() |> 
+  set_engine("randomForest") |> 
+  set_mode("classification")
+
+```
