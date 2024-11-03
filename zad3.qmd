@@ -25,14 +25,9 @@ execute:
 ---
 
 ## Przygotowanie danych
-Rozpoczęcie zadania rozpoczynamy od przygotowania danych. zgodnego z zadaniem nr 2 - szczegółowe opisy procedur dostępne w pliku "ZAD 2 - tidyverse".
+Zadanie rozpoczynamy od przygotowania danych. Jest to procedura zgodna z zadaniem nr 2 - szczegółowe opisy każdej części dostępne w pliku "ZAD 2 - tidyverse".
 
 ```{r}
-#| echo: true
-#| results: "hide"
-#| message: false
-#| style:
-
 
 library(tidymodels) 
 library(skimr) 
@@ -82,6 +77,13 @@ air <-
 
 air |> count(ozone)
 
+
+set.seed(222)
+split <- initial_split(air, strata = ozone, prop = 0.7)  # 70% na trening, 30% na test
+train_data <- training(split)
+test_data <- testing(split)
+
+
 ```
 
 ## Stworzenie modeli regresji logistycznej i lasu losowego.
@@ -100,3 +102,156 @@ rf_model <- rand_forest() |>
   set_mode("classification")
 
 ```
+
+```{r}
+# Przygotowanie przepisu dla modelu regresji logistycznej
+log_recipe <- recipe(ozone ~ nox + no2, data = train_data) |> 
+  step_normalize(all_predictors())  # Normalizacja zmiennych niezależnych
+
+# Przygotowanie przepisu dla modelu lasu losowego
+rf_recipe <- recipe(ozone ~ nox + no2, data = train_data) |> 
+  step_normalize(all_predictors())  # Normalizacja zmiennych niezależnych
+
+```
+
+
+
+# Przeprowadzenie resamplingu
+
+
+
+
+
+## Kroswalidacja
+
+```{r}
+set.seed(222)
+
+# Definiowanie kroswalidacji
+cv_folds <- vfold_cv(train_data)
+
+# f. do ocenu modelu
+evaluate_model_with_recipe <- function(model, recipe, data, cv_folds) {
+  workflow <- workflow() |> 
+    add_model(model) |> 
+    add_recipe(recipe)
+  
+  results <- fit_resamples(
+    object = workflow,
+    resamples = cv_folds,
+    metrics = metric_set(accuracy, roc_auc)
+  )
+  collect_metrics(results)
+}
+
+# Oceny
+log_cv_results <- evaluate_model_with_recipe(log_model, log_recipe, train_data, cv_folds)
+
+rf_cv_results <- evaluate_model_with_recipe(rf_model, rf_recipe, train_data, cv_folds)
+
+```
+
+### wyniki - Regresja logistyczna
+```{r}
+log_cv_results
+```
+
+### wynik - Las losowy
+```{r}
+rf_cv_results
+
+```
+
+## V-krotna kroswalidacja
+Jest to przypadek analogiczny, zawierający różnice w funkcji: *vfold_cv*.
+Metody te wyróżnia parametr *v*, który powoduje wielokrotną (v-krotną) kroswalidację.
+```{r}
+set.seed(222)
+
+# Definiowanie kroswalidacji
+cv_folds <- vfold_cv(train_data, v=5)  
+
+# f. do ocenu modelu
+evaluate_model_with_recipe <- function(model, recipe, data, cv_folds) {
+  workflow <- workflow() |> 
+    add_model(model) |> 
+    add_recipe(recipe)
+  
+  results <- fit_resamples(
+    object = workflow,
+    resamples = cv_folds,
+    metrics = metric_set(accuracy, roc_auc)
+  )
+  collect_metrics(results)
+}
+
+# Oceny
+log_cv_results <- evaluate_model_with_recipe(log_model, log_recipe, train_data, cv_folds)
+
+rf_cv_results <- evaluate_model_with_recipe(rf_model, rf_recipe, train_data, cv_folds)
+
+```
+
+### wyniki - Regresja logistyczna
+```{r}
+log_cv_results
+```
+
+### wynik - Las losowy
+```{r}
+rf_cv_results
+
+```
+
+
+## Bootstrap
+
+```{r}
+#| cache: true
+
+set.seed(222)
+
+# Funkcja do oceny modelu z recepturą
+evaluate_model_with_recipe_bootstrap <- function(model, recipe, data, resamples) {
+  workflow <- workflow() |> 
+    add_model(model) |> 
+    add_recipe(recipe)
+  
+  results <- fit_resamples(
+    object = workflow,
+    resamples = resamples,
+    metrics = metric_set(accuracy, roc_auc)
+  )
+  collect_metrics(results)
+}
+
+# Definiowanie bootstrapu
+bootstraps <- bootstraps(train_data, times = 100)  # 100 próbek bootstrap
+
+# oceny
+log_bootstrap_results <- evaluate_model_with_recipe_bootstrap(log_model, log_recipe, train_data, bootstraps)
+
+rf_bootstrap_results <- evaluate_model_with_recipe_bootstrap(rf_model, rf_recipe, train_data, bootstraps)
+
+```
+
+
+### wynik - Regresja logistyczna
+```{r}
+log_bootstrap_results
+
+```
+
+### wynik - Las losowy
+```{r}
+rf_bootstrap_results
+
+```
+
+
+# Wnioski
+- Pomiędzy kroswalidacją jednokrotną a wielokrotną nie zauważamy drastycznych popraw wyników. Dodatkowo, dla modelu lasu losowego zauważamy pogorszenie dokładności.
+- Metoda bootstrapu, mimo że wymaga więcej czasu obliczeniowego, zapewnia lepszy wgląd w zmienność modeli, ponieważ generuje wiele próbek i pozwala na obserwację stabilności wskaźników takich jak dokładność i AUC (area under curve). Jednak dla obu modeli (regresji logistycznej i lasu losowego) wartości tych miar są do siebie zbliżone, co sugeruje ich stabilność.
+- Wyniki regresji logistycznej i lasu losowego są porównywalne, jednak regresja logistyczna wykazuje wyższą stabilność w metrykach przy różnych metodach resamplingu. Sugeruje to, że jest mniej podatna na zmienność danych w porównaniu do lasu losowego.
+- Las losowy, mimo nieznacznie niższej dokładności, może potencjalnie być bardziej odporny na nadmierne dopasowanie (overfitting), jednak w przypadku tych danych nie wykazuje znaczących korzyści w porównaniu z regresją logistyczną.
+
