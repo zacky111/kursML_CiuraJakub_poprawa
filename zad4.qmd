@@ -1,0 +1,26 @@
+---
+title: "ZAD 4 - tidyverse - dostrojenie innego hiper-parametru drzewa decyzyjnego"
+author: "Jakub Ciura"
+format: 
+  html:
+    theme: minty            
+    toc: true                 
+    toc-depth: 2              
+    code-fold: true           
+    code-tools: true          
+    number-sections: true     
+    font:                     
+      text: "Lato"            
+      code: "Fira Code"       
+      heading: "Roboto"       
+    page-layout: full        
+editor_options: 
+  chunk_output_type: console
+abstract: |
+  Są to zautomatyzowane pomiary analizy obrazu, które są najważniejsze w przewidywaniu jakości segmentacji. 
+  Pozostawiam czytelnikowi zbadanie, czy można dostroić inny hiper-parametr drzewa decyzyjnego. Możesz zapoznać się z dokumentacją referencyjną lub skorzystać z args() funkcji, aby sprawdzić, które argumenty obiektu pasternak są dostępne:
+execute:
+  echo: true                 
+  warning: false             
+  message: false             
+---
