@@ -1,0 +1,33 @@
+---
+title: "ZAD 6 - tidyverse -  model prognozowania poziomów stężeń O3"
+author: "Jakub Ciura"
+format: 
+  html:
+    theme: minty            
+    toc: true                 
+    toc-depth: 2              
+    code-fold: true           
+    code-tools: true          
+    number-sections: true
+    self-contained: true      
+    font:                     
+      text: "Lato"            
+      code: "Fira Code"       
+      heading: "Roboto"       
+    page-layout: full        
+editor_options: 
+  chunk_output_type: console
+abstract: |
+  Na podstawie danych mydata (1 rok) zaproponuj model prognozowania poziomów stężeń O3 (modele regresji). Zastosuj trzy metody:
+  
+    - regresja liniowa prosta (glmnet),
+    
+    - drzewa decyzyjne (rpart)
+    
+    - las losowy (ranger).
+execute:
+  echo: true                 
+  warning: false             
+  message: false
+cache: true          
+---
