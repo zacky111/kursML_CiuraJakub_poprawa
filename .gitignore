@@ -1,6 +1,11 @@
 # QUarto renderowanie
 /.quarto/
 /zad1/
+/zad2_files/
+/zad3_files/
+/zad4_files/
+/zad5_files/
+/zad6_files/
 *.html
 
 
