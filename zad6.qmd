@@ -18,11 +18,12 @@ format:
 editor_options: 
   chunk_output_type: console
 abstract: |
+  
   Na podstawie danych mydata (1 rok) zaproponuj model prognozowania poziomów stężeń O3 (modele regresji). Zastosuj trzy metody:
   
     - regresja liniowa prosta (glmnet),
     
-    - drzewa decyzyjne (rpart)
+    - drzewa decyzyjne (rpart),
     
     - las losowy (ranger).
 execute:
@@ -31,3 +32,291 @@ execute:
   message: false
 cache: true          
 ---
+
+# Przygotowanie danych
+
+```{r}
+#| results: "hide"
+#| warning: false
+#| message: false
+
+library(tidymodels) 
+library(skimr) 
+library(GGally) 
+library(openair) 
+tidymodels_prefer()
+
+air <- mydata |> selectByDate(year = 2004) 
+air |> skim() 
+
+
+air <- air |> na.omit()
+
+library(ggpubr)
+
+air |> 
+  pull(o3) |> 
+  range()  
+
+air <-
+  air |>
+  mutate(ozone = cut(
+    o3,
+    breaks = c(-0.1, 10, 53),
+    labels = c("Niskie", "Wysokie")
+  ))
+
+air |> count(ozone)
+
+```
+
+
+
+
+# Przekształcenie kierunku wiatru na zmienną kategoryczną
+```{r}
+
+air <- air |> 
+  mutate(wind_direction_cat = cut(
+    wd, 
+    breaks = seq(0, 360, by = 22.5), 
+    labels = c("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", 
+               "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"),
+    include.lowest = TRUE
+  ))
+
+
+air <- air |> select(-date)
+
+split <- initial_split(air, strata = ozone, prop = 0.7)  # 70% na trening, 30% na test
+train_data <- training(split)
+test_data <- testing(split)
+
+library(ggplot2)
+
+# Wykres słupkowy dla kierunków wiatru
+ggplot(air, aes(x = wind_direction_cat)) +
+  geom_bar(fill = "steelblue", color = "black") +
+  labs(
+    title = "Rozkład kierunków wiatru (16 kategorii)",
+    x = "Kierunek wiatru",
+    y = "Liczba obserwacji"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+# Przegląd danych po początkowych transformacjach
+
+```{r}
+glimpse(train_data)
+
+```
+
+# Tworzenie receptury dla każdego modelu
+```{r}
+glmnet_recipe <- recipe(o3 ~ nox + no2 + wind_direction_cat, data = train_data) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_normalize(all_predictors())
+
+rpart_recipe <- recipe(o3 ~ nox + no2 + wind_direction_cat, data = train_data)
+
+ranger_recipe <- recipe(o3 ~ nox + no2 + wind_direction_cat, data = train_data)
+
+```
+
+
+# Optymalizacja modelu regresji liniowej (GLMNET)
+
+```{r}
+
+library(glmnet)
+library(ranger)
+# Ustawienia dla optymalizacji hiperparametrów
+set.seed(123)
+
+
+
+# Definicja modelu GLMNET z regularizacją
+glmnet_model <- linear_reg(penalty = tune(), mixture = tune()) |>
+  set_engine("glmnet")
+
+# Siatka do przeszukiwania hiperparametrów
+glmnet_grid <- grid_regular(
+  penalty(),
+  mixture(),
+  levels = 5
+)
+
+# Workflow dla modelu GLMNET
+glmnet_workflow <- workflow() |>
+  add_recipe(glmnet_recipe) |>
+  add_model(glmnet_model)
+
+# Dopasowanie modelu GLMNET z walidacją krzyżową
+glmnet_res <- tune_grid(
+  glmnet_workflow,
+  resamples = vfold_cv(train_data, v = 5),
+  grid = glmnet_grid,
+  metrics = metric_set(rmse, rsq)
+)
+
+```
+
+
+# Optymalizacja modelu drzewa decyzyjnego (RPART)
+```{r}
+
+
+# Definicja modelu RPART
+rpart_model <- decision_tree(cost_complexity = tune(), min_n = tune()) |>
+  set_engine("rpart") |>
+  set_mode("regression")
+
+# Siatka dla drzewa decyzyjnego
+rpart_grid <- grid_regular(
+  cost_complexity(),
+  min_n(),
+  levels = 5
+)
+
+# Workflow dla modelu drzewa decyzyjnego
+rpart_workflow <- workflow() |>
+  add_recipe(rpart_recipe) |>
+  add_model(rpart_model)
+
+# Dopasowanie modelu RPART z walidacją krzyżową
+rpart_res <- tune_grid(
+  rpart_workflow,
+  resamples = vfold_cv(train_data, v = 5),
+  grid = rpart_grid,
+  metrics = metric_set(rmse, rsq)
+)
+```
+# Optymalizacja modelu lasu losowego (RANGER)
+
+```{r}
+# Definicja modelu RANGER
+ranger_model <- rand_forest(mtry = tune(), min_n = tune(), trees = 100) |>
+  set_engine("ranger") |>
+  set_mode("regression")
+
+# Liczba predyktorów (bez zmiennej docelowej `o3`)
+num_predictors <- ncol(train_data) - 1
+
+# Poprawna siatka dla lasu losowego
+ranger_grid <- grid_regular(
+  mtry(range = c(1, num_predictors)), # Zakres mtry
+  min_n(range = c(5, 20)), # Przykładowy zakres dla min_n
+  levels = 5
+)
+
+# Workflow dla modelu lasu losowego
+ranger_workflow <- workflow() |>
+  add_recipe(ranger_recipe) |>
+  add_model(ranger_model)
+
+# Dopasowanie modelu RANGER z walidacją krzyżową
+ranger_res <- tune_grid(
+  ranger_workflow,
+  resamples = vfold_cv(train_data, v = 5),
+  grid = ranger_grid,
+  metrics = metric_set(rmse, rsq)
+)
+
+
+```
+
+# Wybór najlepszego modelu na podstawie wyników walidacji krzyżowej
+
+
+```{r}
+# Wybór najlepszego modelu dla GLMNET
+best_glmnet <- select_best(glmnet_res, metric="rmse")
+final_glmnet <- finalize_workflow(glmnet_workflow, best_glmnet)
+
+# Wybór najlepszego modelu dla RPART
+best_rpart <- select_best(rpart_res, metric="rmse")
+final_rpart <- finalize_workflow(rpart_workflow, best_rpart)
+
+# Wybór najlepszego modelu dla RANGER
+best_ranger <- select_best(ranger_res, metric="rmse")
+final_ranger <- finalize_workflow(ranger_workflow, best_ranger)
+
+```
+
+
+
+# Ocena modeli na zbiorze testowym
+
+```{r}
+# Dopasowanie finalnych modeli do zbioru testowego
+glmnet_test <- last_fit(final_glmnet, split)
+rpart_test <- last_fit(final_rpart, split)
+ranger_test <- last_fit(final_ranger, split)
+
+# Pobranie wyników z każdego modelu
+glmnet_metrics <- collect_metrics(glmnet_test)
+rpart_metrics <- collect_metrics(rpart_test)
+ranger_metrics <- collect_metrics(ranger_test)
+```
+
+
+# Wykres rozrzutu z linią idealną dla najlepszego modelu
+```{r}
+
+# Wybór najlepszego modelu na podstawie RMSE
+best_model <- bind_rows(glmnet_metrics, rpart_metrics, ranger_metrics) |>
+  filter(.metric == "rmse") |>
+  slice_min(order_by = .estimate)
+
+print(best_model)
+
+# Wybór najlepszego modelu na podstawie jego nazwy
+best_model_name <- best_model$.config[1]  # Assuming the model name is in .config
+
+# Dopasowanie najlepszego modelu do zbioru testowego
+final_res <- switch(
+  best_model_name,
+  "Preprocessor1_Model1" = glmnet_test, 
+  "Preprocessor2_Model1" = rpart_test,
+  "Preprocessor3_Model1" = ranger_test
+)
+
+```
+
+
+```{r}
+
+predictions <- collect_predictions(final_res)
+
+# Wykres rozrzutu z linią idealną
+ggplot(predictions, aes(x = .pred, y = o3)) +
+  geom_point(color = "blue", alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(
+    title = "Porównanie przewidywanych i rzeczywistych wartości O3",
+    x = "Przewidywane wartości O3",
+    y = "Rzeczywiste wartości O3"
+  ) +
+  theme_minimal()
+
+```
+
+
+# Wnioski
+## Skuteczność modeli:
+Zastosowano trzy podejścia do prognozowania stężeń O3: regresję liniową (GLMNET), drzewa decyzyjne (RPART) oraz lasy losowe (RANGER). Wybrano model o najniższym współczynniku RMSE, co sugeruje jego lepszą zdolność do prognozowania.
+
+## Wizualizacja wyników:
+Wykres rozrzutu pokazuje przewidywane wartości O3 w porównaniu z rzeczywistymi. Punkty bliskie linii idealnej (czerwona przerywana) sugerują wysoką jakość prognoz i stabilność modelu.
+
+## Ograniczenia i sugestie:
+Warto uwzględnić dodatkowe zmienne, które mogą wpłynąć na stężenia O3, oraz przeprowadzić analizy długoterminowe w różnych warunkach sezonowych.
+
+
+
+
+
