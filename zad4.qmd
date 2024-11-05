@@ -8,7 +8,8 @@ format:
     toc-depth: 2              
     code-fold: true           
     code-tools: true          
-    number-sections: true     
+    number-sections: true
+    self-contained: true      
     font:                     
       text: "Lato"            
       code: "Fira Code"       
@@ -103,15 +104,16 @@ args(decision_tree)
 
 Jako hiperparametr w tym zadaniu wybrane zostało *tree_depth* - parametr, definiujący maksymalną głębokość drzewa, wpływający na dokładność oraz możliwość przeuczenia modelu.
 
-# Konfiguracja modelu z tuningiem oraz zmianą hiperparametru
+# Konfiguracja modelu z tuningiem oraz zmianami hiperparametrów
 ```{r}
-
 # CV, 5 krotna
 cv_folds <- vfold_cv(train_data, v = 5, strata = ozone)  
 
 # Konfiguracja modelu z tuningiem
 tree_spec <- decision_tree(
-  tree_depth = tune()  # Wybór hiperparametru do strojenia
+  tree_depth = tune(),         # Wybór hiperparametru do strojenia
+  cost_complexity = tune(),    # Dodanie cost_complexity do strojenia
+  min_n = tune()               # Dodanie min_n do strojenia
 ) %>%
   set_engine("rpart") %>%
   set_mode("classification")
@@ -121,8 +123,13 @@ tree_workflow <- workflow() %>%
   add_model(tree_spec) %>%
   add_recipe(log_recipe)
 
-# Definicja siatki wartości dla `tree_depth`
-tree_grid <- grid_regular(tree_depth(), levels = 10)
+# Definicja siatki wartości dla `tree_depth`, `cost_complexity` oraz `min_n`
+tree_grid <- grid_regular(
+  tree_depth(), 
+  cost_complexity(),
+  min_n(),
+  levels = 2
+)
 
 # Strojenie modelu
 tune_results <- tune_grid(
@@ -132,15 +139,53 @@ tune_results <- tune_grid(
   metrics = metric_set(roc_auc, accuracy)
 )
 
-# Wyniki
-collect_metrics(tune_results)
+# Zbierz wyniki
+metrics <- collect_metrics(tune_results)
+
+# Znajdź najlepszy zestaw parametrów na podstawie najwyższego accuracy
+best_accuracy <- select_best(tune_results, metric = "accuracy")
+
+# Znajdź najlepszy zestaw parametrów na podstawie najwyższego ROC AUC
+best_roc_auc <- select_best(tune_results, metric = "roc_auc")
+
+```
+
+# Na podstawie utworzonej powyżej siatki hiperparametrów odnajdujemy najlepsze parametry dla:
+a) dokładności
+```{r}
+best_accuracy
+```
+
+b) ROC AUC
+```{r}
+best_roc_auc
+```
+
+Finalnie, analizujemy całościowe efekty tuningu:
+```{r}
+# Opcjonalnie, wybierz najlepszy zestaw parametrów ogólnie, np. na podstawie ROC AUC:
+final_params <- select_best(tune_results, metric = "roc_auc")
+
+# Finalny model na podstawie wybranych parametrów
+final_tree <- finalize_workflow(tree_workflow, final_params)
+
+# Dopasowanie do danych treningowych
+final_fit <- fit(final_tree, data = train_data)
+
+# Ewaluacja na danych testowych
+test_results <- final_fit %>%
+  predict(test_data) %>%
+  bind_cols(test_data) %>%
+  metrics(truth = ozone, estimate = .pred_class)
+
+# Wyświetlenie wyników
+test_results
 
 ```
 
 # Wnioski
 
-Jak można zauważyć, zmiany *tree_depth* powodują zmianę dokładności oraz ROC AUC. Wartości 2 i 3 powodują pogorszenie działania modelu, jednak zwiększenie do wartości 4 powoduje polepszenie jego działania. Dalsze zwiększanie tego parametru nie powoduje poprawy.
-
+Jak można zauważyć, zmiany *tree_depth*, *cost_complexity*, *min_n* powodują zmianę dokładności oraz ROC AUC. Utworzenie siatki, składającej się ze zmieniających parametrów pozwala wprost odnaleźć parametry, które pozwalają najlepiej dostroić model.
 
 
 

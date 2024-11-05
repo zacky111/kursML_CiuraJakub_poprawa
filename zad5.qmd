@@ -1,0 +1,148 @@
+---
+title: "ZAD 5 - tidyverse - optymalizacja hiper-parametrów modelu lasu losowego"
+author: "Jakub Ciura"
+format: 
+  html:
+    theme: minty            
+    toc: true                 
+    toc-depth: 2              
+    code-fold: true           
+    code-tools: true          
+    number-sections: true
+    self-contained: true      
+    font:                     
+      text: "Lato"            
+      code: "Fira Code"       
+      heading: "Roboto"       
+    page-layout: full        
+editor_options: 
+  chunk_output_type: console
+abstract: |
+  Zoptymalizuj hiper-parametry w modelu lasu losowego utworzonego w ćwiczeniu nr 3. Dostosuj ilość współczynników w siatce hiper-parametrów.
+execute:
+  echo: true                 
+  warning: false             
+  message: false
+cache: true          
+---
+
+
+# Przygotowanie danych
+Zadanie rozpoczynamy od przygotowania danych. Jest to procedura zgodna z zadaniem nr 2 - szczegółowe opisy każdej części dostępne w pliku "ZAD 2 - tidyverse".
+
+
+
+```{r}
+#| results: "hide"
+#| warning: false
+#| message: false
+
+library(tidymodels) 
+library(skimr) 
+library(GGally) 
+library(openair) 
+tidymodels_prefer()
+
+air <- mydata |> selectByDate(year = 2004) 
+air |> skim()
+
+air <- air |> na.omit()
+
+library(ggpubr)
+
+air |> 
+  pull(o3) |> 
+  range()  
+
+air <-
+  air |>
+  mutate(ozone = cut(
+    o3,
+    breaks = c(-0.1, 10, 53),
+    labels = c("Niskie", "Wysokie")
+  ))
+
+air |> count(ozone)
+
+split <- initial_split(air, strata = ozone, prop = 0.7)  # 70% na trening, 30% na test
+train_data <- training(split)
+test_data <- testing(split)
+
+```
+
+# Stworzenie modelu lasu losowego
+
+```{r}
+
+# Definiowanie modelu lasu losowego
+rf_model <- rand_forest() |> 
+  set_engine("randomForest") |> 
+  set_mode("classification")
+
+# Przygotowanie przepisu dla modelu lasu losowego
+rf_recipe <- recipe(ozone ~ nox + no2, data = train_data) |> 
+  step_normalize(all_predictors())  # Normalizacja zmiennych niezależnych
+
+```
+
+
+```{r}
+library(tidymodels)
+
+# Ustawienie siatki hiperparametrów
+rf_grid <- grid_regular(
+  mtry(range = c(1, 2)),       # Zakres dla mtry (np. 1-2)
+  min_n(range = c(2, 20)),     # Zakres dla min_n (np. 2-10)
+  levels = 20                   # Poziomy dla siatki (im więcej, tym bardziej szczegółowe)
+)
+
+# Walidacja krzyżowa
+cv_folds <- vfold_cv(train_data, v = 5, strata = ozone)
+
+# Workflow
+rf_workflow <- workflow() |> 
+  add_model(rf_model) |> 
+  add_recipe(rf_recipe)
+
+# Przeszukiwanie siatki hiperparametrów
+rf_tune_results <- rf_workflow |> 
+  tune_grid(
+    resamples = cv_folds,
+    grid = rf_grid,
+    metrics = metric_set(roc_auc)
+  )
+
+# Znalezienie najlepszych hiperparametrów
+best_params <- rf_tune_results |> select_best(metric = "roc_auc")
+
+best_params
+
+
+```
+
+# Wytrenowanie modelu z optymalnymi hiperparametrami
+
+```{r}
+# Dopasowanie modelu do optymalnych hiperparametrów
+final_rf_model <- finalize_model(rf_model, best_params)
+
+# Tworzenie workflow z najlepszym modelem
+final_rf_workflow <- workflow() |> 
+  add_model(final_rf_model) |> 
+  add_recipe(rf_recipe)
+
+# Dopasowanie ostatecznego modelu do danych treningowych
+final_rf_fit <- final_rf_workflow |> 
+  fit(data = train_data)
+
+```
+
+# Wyniki
+```{r}
+# Wyświetlenie najlepszych wyników
+show_best(rf_tune_results, metric = "roc_auc", n = 5)
+```
+
+# Wnioski
+Otrzymane ROC_AUC pomimo zmiany parametrów na większe, nie zwiększają się - przez korekcje tych hiperparametrów nie jesteśmy w stanie zwiększyć ROC AUC bardziej. Świadczy to o tym, że pod względem parametrów *mtry* oraz *min_n* osiągnięty został maksymalnie dobry efekt strojenia. Strojenie odbywało się dla *levels*=20.
+
