@@ -92,7 +92,7 @@ library(tidymodels)
 # Ustawienie siatki hiperparametrów
 rf_grid <- grid_regular(
   mtry(range = c(1, 2)),       # Zakres dla mtry (np. 1-2)
-  min_n(range = c(2, 10)),     # Zakres dla min_n (np. 2-10)
+  min_n(range = c(2, 20)),     # Zakres dla min_n (np. 2-10)
   levels = 20                   # Poziomy dla siatki (im więcej, tym bardziej szczegółowe)
 )
 
@@ -137,29 +137,12 @@ final_rf_fit <- final_rf_workflow |>
 
 ```
 
-# Wizualizacja wyników
+# Wyniki
 ```{r}
 # Wyświetlenie najlepszych wyników
 show_best(rf_tune_results, metric = "roc_auc", n = 5)
 ```
 
+# Wnioski
+Otrzymane ROC_AUC pomimo zmiany parametrów na większe, nie zwiększają się - przez korekcje tych hiperparametrów nie jesteśmy w stanie zwiększyć ROC AUC bardziej. Świadczy to o tym, że pod względem parametrów *mtry* oraz *min_n* osiągnięty został maksymalnie dobry efekt strojenia. Strojenie odbywało się dla *levels*=20.
 
-```{r}
-library(ggplot2)
-
-# Wyciągnij najlepsze wyniki dla każdej kombinacji hiperparametrów
-results <- collect_metrics(rf_tune_results)
-
-# Stwórz wykres dla metryki roc_auc w zależności od mtry i min_n
-ggplot(results, aes(x = mtry, y = mean, color = factor(min_n))) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "Optymalizacja hiperparametrów modelu lasu losowego",
-    x = "Liczba wybranych predyktorów (mtry)",
-    y = "Średnia wartość ROC AUC",
-    color = "Minimalna liczba próbek w liściu (min_n)"
-  ) +
-  theme_minimal()
-
-```
